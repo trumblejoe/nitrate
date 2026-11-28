@@ -323,12 +323,19 @@ object TogetherRow {
             val why = if (l.together) "Your group with ${l.group.label} hasn't watched it yet: you watch it together." else "${l.word}: the group's schedule is ${l.group.schedule?.label}."
             return Standing("${l.word} · ${st.partners}", "$why ${st.long}", catchUp = false, word = l.word, partners = st.partners)
         }
+        // The standing is the whole title's: on one of its parts (a season's episodes on a details page)
+        // it shows only on the part that's next with the group, else every episode read "Behind" alike.
+        if (item.id != title && !k.single && item.id !in nextParts(k, context)) return null
         g@ for (g in info?.on(title).orEmpty().filter { item.watchGroupId == null || it.id == item.watchGroupId }) {
             val p = g.pending ?: continue@g
             if (!p.voted) return st.copy(long = "${p.fromName} asks to change the schedule to ${p.proposed.label}. ${st.long}")
         }
         return st
     }
+
+    /** The part that's next in [k] for each of [groupIds] (by each group's record), or the user's own next with none. */
+    fun nextParts(k: KeepUp, groupIds: Set<String>): Set<String> =
+        (if (groupIds.isEmpty()) listOf(k.mine) else groupIds.map(k::mineIn)).mapNotNull { seen -> k.order.firstOrNull { it !in seen } }.toSet()
 
     /** The group whose schedule hasn't let [item] out yet, if any; Together's question is [PartLock]'s. */
     fun lockOf(item: MediaItem, info: PartnersInfo?, standings: Map<String, KeepUp>): WatchGroup? =

@@ -57,4 +57,21 @@ class CheckBeforeSendingTest {
         assertEquals(episode, registry(ask).checkBeforeSending(episode, { GuardAction.RunThenPlay(playIfFailed = true) { error("no session") } }) {})
         assertEquals(episode, registry(ask).checkBeforeSending(episode, { GuardAction.RunThenPlay(playIfFailed = false) {} }) {})
     }
+
+    @Test fun everyGuardHearsWhereThePlayStartedEvenWhenAnEarlierOneAsks() = runTest {
+        // A group's card: the previous-episode guard asks first; the watch groups' guard still has to
+        // hear the origin, or the play counts for no group.
+        val heard = mutableListOf<String>()
+        val later = object : PlaybackGuard {
+            override val id = "later"
+            override val name = "Later"
+            override val description = ""
+            override val enabledByDefault = true
+            override suspend fun beforePlay(item: MediaItem, host: PluginHost) = GuardDecision.Allow
+            override fun noteOrigin(item: MediaItem, host: PluginHost, origin: dev.nitrate.core.partners.PlayOrigin?) { heard += "${item.id} $origin" }
+        }
+        val registry = PluginRegistry(listOf(guard(asking(GuardAction.PlayAnyway)), later), PluginHost(server, store))
+        registry.checkBeforePlay(episode, dev.nitrate.core.partners.PlayOrigin.GroupCard("g")) { GuardAction.PlayAnyway }
+        assertEquals(listOf("e3 GroupCard(groupId=g)"), heard)
+    }
 }

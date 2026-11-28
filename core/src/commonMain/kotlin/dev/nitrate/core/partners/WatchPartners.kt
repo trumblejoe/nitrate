@@ -957,6 +957,10 @@ class WatchPartnersPlugin : PlaybackGuard {
         answered.update { it - key(host, "item:" + item.id) }
     }
 
+    override fun noteOrigin(item: MediaItem, host: PluginHost, origin: PlayOrigin?) {
+        if (origin != null) answer(host, item, origin) else cancelled(item, host)
+    }
+
     private fun answer(host: PluginHost, item: MediaItem, origin: PlayOrigin) {
         answered.update { it + (key(host, "item:" + item.id) to origin) }
     }

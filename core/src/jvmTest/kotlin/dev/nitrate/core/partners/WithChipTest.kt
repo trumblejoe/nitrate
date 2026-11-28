@@ -206,6 +206,26 @@ class WithChipTest {
         assertEquals(1, marked.size)
     }
 
+    @Test fun aCountMadeAsThePlayerClosesStillReachesTheServer() = runTest(UnconfinedTestDispatcher()) {
+        // The player screen's scope is cancelled as it closes, the moment the count is made: the
+        // count runs on the lasting scope, so it isn't lost with it.
+        val st = standings(tommySuzy, kim)
+        val marked = mutableListOf<String>()
+        val player = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.test.StandardTestDispatcher(testScheduler))
+        val company = WatchCompany(
+            player, MutableStateFlow(info(tommySuzy, kim)), MutableStateFlow(st), MutableStateFlow(null), { "Me" },
+            originOf = { PlayOrigin.GroupCard("ts") },
+            mark = { groups, items -> marked += "$groups $items" },
+            writes = backgroundScope,
+        )
+        company.start(eps[3], st)
+        advanceUntilIdle()
+        company.left("e4", 60_000, 60_000)
+        player.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+        advanceUntilIdle()
+        assertEquals(listOf("[ts] [e4]"), marked)
+    }
+
     @Test fun startedElsewhereNothingCountsForAGroup() = runTest(UnconfinedTestDispatcher()) {
         // Continue Watching, the library, downloads: even the one group it's next in isn't moved.
         val kimAhead = kim.copy(ownRecord = (1..4).map { "e$it" }.toSet())

@@ -948,6 +948,8 @@ class AppContainer(
                     pagesChanged()
                 }
             },
+            // The counts are made as the player closes: never on the player screen's own scope, which is cancelled then.
+            writes = networkScope,
         )
 
     /**

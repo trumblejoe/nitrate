@@ -207,6 +207,9 @@ class WatchPartnersTest {
         assertEquals("m2", card?.id)
         assertEquals("list", TogetherRow.titleOf(card!!, standings))
         assertEquals("Behind · Kim 2 ahead", TogetherRow.line(card, null, standings)?.short)
+        // Only the part that's next carries the title's standing: the others in a list (a details page's) say nothing.
+        assertNull(TogetherRow.line(items[2], null, standings))
+        assertNull(TogetherRow.line(items[0], null, standings))
         val group = WatchGroup("g", "list", "Marathon", listOf(dev.nitrate.core.writing.UserRef("kim", "Kim")), 0)
         val c = TogetherRow.choices(card, PartnersInfo(listOf(group), emptyList(), emptyList()), standings, items, canWatchNow = false, ownSpoilers = emptySet())
         assertEquals("Catch up to Kim (2 titles)", c.filterIsInstance<TogetherChoice.CatchUp>().first().label)

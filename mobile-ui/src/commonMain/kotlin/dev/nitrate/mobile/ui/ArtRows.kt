@@ -140,6 +140,7 @@ fun FilmStripRow(row: MediaRow, actions: AppActions) {
                 Text(item.displayTitle, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val line = listOfNotNull(item.episodeLabel) + prefs.facts(item).take(4)
                 if (line.isNotEmpty()) Text(line.joinToString("  ·  "), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                LocalCardLine.current(item)?.let { Text(it, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
                     PillButton(playLabel(item), Icons.Default.PlayArrow, primary = true, onClick = { actions.playOrOpen(item) })
                     PillButton("Details", Icons.Default.Info, primary = false, onClick = { actions.open(item, "${row.key}-${item.id}") })
@@ -187,10 +188,12 @@ private fun DoubleBill(left: MediaItem, right: MediaItem, actions: AppActions, m
         Column(Modifier.align(Alignment.TopStart).padding(20.dp).fillMaxWidth(0.55f)) {
             Text(left.displayTitle.uppercase(), color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(listOfNotNull(left.episodeLabel ?: left.productionYear?.toString()).joinToString(), color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
+            LocalCardLine.current(left)?.let { Text(it, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 2) }
         }
         Column(Modifier.align(Alignment.BottomEnd).padding(20.dp).fillMaxWidth(0.55f), horizontalAlignment = Alignment.End) {
             Text(right.displayTitle.uppercase(), color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(listOfNotNull(right.episodeLabel ?: right.productionYear?.toString()).joinToString(), color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
+            LocalCardLine.current(right)?.let { Text(it, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 2) }
         }
     }
 }
@@ -203,6 +206,7 @@ private fun SingleBill(item: MediaItem, actions: AppActions, modifier: Modifier)
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Color(0xCC000000))))
         Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
             Text(item.displayTitle.uppercase(), color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            LocalCardLine.current(item)?.let { Text(it, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 2) }
             PillButton(playLabel(item), Icons.Default.PlayArrow, primary = true, onClick = { actions.playOrOpen(item) }, modifier = Modifier.padding(top = 10.dp))
         }
     }
@@ -248,6 +252,7 @@ fun CressidaCard(item: MediaItem, actions: AppActions, sharedKey: String, displa
         )
         Column(Modifier.align(Alignment.BottomEnd).padding(18.dp).fillMaxWidth(0.5f), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item.episodeLabel?.let { Text(it, color = Color.White, style = MaterialTheme.typography.labelLarge) }
+            LocalCardLine.current(item)?.let { Text(it, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End) }
             val facts = prefs.facts(item).take(3)
             if (facts.isNotEmpty()) Text(facts.joinToString(" · "), color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelMedium, maxLines = 1)
             if (compact) {

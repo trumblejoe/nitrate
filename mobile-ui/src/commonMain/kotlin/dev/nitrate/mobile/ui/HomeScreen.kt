@@ -199,6 +199,9 @@ fun PillButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVec
  * A row as posters, artwork (wide pictures; with its cards hidden, one title at a time filling the
  * screen) or one of the art styles, per the row's [display]. With [onDisplay], the header offers the choice.
  */
+/** The line saying where the user stands on a shared title, for whichever card style a row draws (null: none). */
+val LocalCardLine = androidx.compose.runtime.staticCompositionLocalOf<(MediaItem) -> String?> { { null } }
+
 @Composable
 fun CinematicRow(row: MediaRow, shownAs: RowDisplay, rowActions: AppActions, onDisplay: ((RowDisplay) -> Unit)? = null) {
     // Every row style shows titles spoiler-safe (named "Episode 5", blurred, no description).
@@ -220,47 +223,50 @@ fun CinematicRow(row: MediaRow, shownAs: RowDisplay, rowActions: AppActions, onD
     if (display.style == RowStyle.POSTER || display.style == RowStyle.WIDE) {
         PrefetchAlongRow(cardState, row.items) { listOf(actions.server.rowCardImage(it, display)) }
     }
-    // Cards hidden: the whole screen, with its own header over the artwork.
-    if (display.cardsHidden) {
-        FullShowcaseRow(row, display, actions, onDisplay)
-        return
-    }
-    Column {
-        SectionHeader(row.title) { if (onDisplay != null) RowStylePicker(row, display, onDisplay, actions) }
-        when (display.style) {
-            RowStyle.FILM_STRIP -> FilmStripRow(row, actions)
-            RowStyle.LIGHTNING -> LightningRow(row, actions)
-            RowStyle.CRESSIDA -> CressidaRow(row, actions, display)
-            RowStyle.WIDE -> LazyRow(state = cardState, contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
-                    val key = "${row.key}-${item.id}"
-                    MediaCard(
-                        item = item,
-                        imageUrl = actions.server.cardImage(item, CardShape.WIDE),
-                        shape = CardShape.WIDE,
-                        width = 272.dp,
-                        title = item.displayTitle.takeIf { display.showTitles },
-                        subtitle = line(item) ?: listOfNotNull(dev.nitrate.core.model.AirDates.status(item, dev.nitrate.android.nowMs()) ?: item.episodeLabel ?: item.productionYear?.toString(), timeLeft(item)).joinToString(" · ").takeIf { display.showTitles },
-                        sharedKey = key,
-                        onClick = { actions.open(item, key) },
-                        onLongClick = cards?.takeIf { it.shares(item) }?.let { c -> { c.hold(item) } },
-                    )
+    // Every style says where the user stands on a shared title (the Watching together row's cards), not just Poster and Artwork.
+    androidx.compose.runtime.CompositionLocalProvider(LocalCardLine provides ::line) {
+        // Cards hidden: the whole screen, with its own header over the artwork.
+        if (display.cardsHidden) {
+            FullShowcaseRow(row, display, actions, onDisplay)
+            return@CompositionLocalProvider
+        }
+        Column {
+            SectionHeader(row.title) { if (onDisplay != null) RowStylePicker(row, display, onDisplay, actions) }
+            when (display.style) {
+                RowStyle.FILM_STRIP -> FilmStripRow(row, actions)
+                RowStyle.LIGHTNING -> LightningRow(row, actions)
+                RowStyle.CRESSIDA -> CressidaRow(row, actions, display)
+                RowStyle.WIDE -> LazyRow(state = cardState, contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
+                        val key = "${row.key}-${item.id}"
+                        MediaCard(
+                            item = item,
+                            imageUrl = actions.server.cardImage(item, CardShape.WIDE),
+                            shape = CardShape.WIDE,
+                            width = 272.dp,
+                            title = item.displayTitle.takeIf { display.showTitles },
+                            subtitle = line(item) ?: listOfNotNull(dev.nitrate.core.model.AirDates.status(item, dev.nitrate.android.nowMs()) ?: item.episodeLabel ?: item.productionYear?.toString(), timeLeft(item)).joinToString(" · ").takeIf { display.showTitles },
+                            sharedKey = key,
+                            onClick = { actions.open(item, key) },
+                            onLongClick = cards?.takeIf { it.shares(item) }?.let { c -> { c.hold(item) } },
+                        )
+                    }
                 }
-            }
-            else -> LazyRow(state = cardState, contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
-                    val key = "${row.key}-${item.id}"
-                    MediaCard(
-                        item = item,
-                        imageUrl = actions.server.cardImage(item, CardShape.POSTER),
-                        shape = CardShape.POSTER,
-                        width = 128.dp,
-                        title = item.name.takeIf { display.showTitles },
-                        subtitle = line(item) ?: item.productionYear?.toString().takeIf { display.showTitles },
-                        sharedKey = key,
-                        onClick = { actions.open(item, key) },
-                        onLongClick = cards?.takeIf { it.shares(item) }?.let { c -> { c.hold(item) } },
-                    )
+                else -> LazyRow(state = cardState, contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
+                        val key = "${row.key}-${item.id}"
+                        MediaCard(
+                            item = item,
+                            imageUrl = actions.server.cardImage(item, CardShape.POSTER),
+                            shape = CardShape.POSTER,
+                            width = 128.dp,
+                            title = item.name.takeIf { display.showTitles },
+                            subtitle = line(item) ?: item.productionYear?.toString().takeIf { display.showTitles },
+                            sharedKey = key,
+                            onClick = { actions.open(item, key) },
+                            onLongClick = cards?.takeIf { it.shares(item) }?.let { c -> { c.hold(item) } },
+                        )
+                    }
                 }
             }
         }
@@ -398,6 +404,7 @@ private fun FullShowcasePage(item: MediaItem, sharedKey: String, display: RowDis
                 Text(item.displayTitle, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black, color = Color.White, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
             item.episodeLabel?.let { Text(it, color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.titleSmall) }
+            LocalCardLine.current(item)?.let { Text(it, color = Color.White, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }
             if (options.showDetails) {
                 val facts = prefs.facts(item).let { f -> if (options.showRatings) f else f.filterNot { it.startsWith("★") } }
                 if (facts.isNotEmpty()) Text(facts.take(5).joinToString("  ·  "), color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)

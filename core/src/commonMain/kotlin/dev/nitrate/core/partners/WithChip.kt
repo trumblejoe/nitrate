@@ -206,6 +206,12 @@ class WatchCompany(
      * watch never shows in the user's own history (`MediaServer.groupPlay`).
      */
     private val forGroups: suspend (itemId: String, groupIds: List<String>, before: dev.nitrate.core.model.UserState) -> Unit = { _, _, _ -> },
+    /**
+     * Where the server writes run ([mark], [record], [resume], [forGroups]): one that outlives the
+     * player. [left] runs as the player closes, when [scope] (the player screen's) is being
+     * cancelled: launched there, a count never reached the server.
+     */
+    private val writes: CoroutineScope = scope,
 ) {
     private val item = MutableStateFlow<MediaItem?>(null)
     private val with = MutableStateFlow<WatchingWith?>(null)
@@ -327,21 +333,21 @@ class WatchCompany(
             val playing = item.value?.takeIf { it.id == itemId } ?: return
             if (positionMs < RESUME_FROM) return
             val group = inRoom.value?.groupId ?: counting(playing)?.groups?.singleOrNull()?.id ?: return
-            scope.launch { runCatching { resume(group, itemId, positionMs) } }
+            writes.launch { runCatching { resume(group, itemId, positionMs) } }
             return
         }
         if (itemId in counted) return
         val r = inRoom.value
         if (r != null) {
             counted += itemId
-            scope.launch { runCatching { record(r.groupId, listOf(itemId), r.present) } }
+            writes.launch { runCatching { record(r.groupId, listOf(itemId), r.present) } }
             return
         }
         val playing = item.value?.takeIf { it.id == itemId } ?: return
         val c = counting(playing) ?: return
         if (c.groups.isEmpty()) return
         counted += itemId
-        scope.launch { runCatching { mark(c.recordFor(), listOf(itemId)) } }
+        writes.launch { runCatching { mark(c.recordFor(), listOf(itemId)) } }
         if (c.asksAll) ask(CountAsk(listOf(itemId), playing.episodeLabel ?: playing.name, c))
     }
 
