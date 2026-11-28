@@ -226,6 +226,24 @@ class WithChipTest {
         assertEquals(listOf("[ts] [e4]"), marked)
     }
 
+    @Test fun itCountsAsItReachesTheCreditsWhileStillPlaying() = runTest(UnconfinedTestDispatcher()) {
+        val st = standings(tommySuzy, kim)
+        val marked = mutableListOf<String>()
+        val company = WatchCompany(
+            backgroundScope, MutableStateFlow(info(tommySuzy, kim)), MutableStateFlow(st), MutableStateFlow(null), { "Me" },
+            originOf = { PlayOrigin.GroupCard("ts") },
+            mark = { groups, items -> marked += "$groups $items" },
+        )
+        company.start(eps[3], st)
+        advanceUntilIdle()
+        // The ending starts at 86%: nothing before it, counted once as it's reached, not again on leaving.
+        company.playing("e4", 50_000, 60_000, watchedAtMs = 51_600)
+        assertTrue(marked.isEmpty())
+        company.playing("e4", 52_000, 60_000, watchedAtMs = 51_600)
+        company.left("e4", 53_000, 60_000, watchedAtMs = 51_600)
+        assertEquals(listOf("[ts] [e4]"), marked)
+    }
+
     @Test fun startedElsewhereNothingCountsForAGroup() = runTest(UnconfinedTestDispatcher()) {
         // Continue Watching, the library, downloads: even the one group it's next in isn't moved.
         val kimAhead = kim.copy(ownRecord = (1..4).map { "e$it" }.toSet())

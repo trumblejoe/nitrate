@@ -165,6 +165,7 @@ actual fun PlayerScreen(
     val company = rememberWatchCompany(
         actions, item, enabled = !local && clipEndMs == null && testPlay == null, groupChat,
         positionMs = { session.currentMs() }, durationMs = { session.durationMs.value },
+        segments = { session.segments.value },
     )
     val withChip = company?.chip?.collectAsState()?.value
     var withOpen by remember { mutableStateOf(false) }

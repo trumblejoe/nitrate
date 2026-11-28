@@ -275,6 +275,7 @@ fun DesktopPlayer(
     val company = rememberWatchCompany(
         actions, item, enabled = !local && clipEndMs == null && !testPlay, groupChat,
         positionMs = { session.currentMs() }, durationMs = { session.durationMs.value },
+        segments = { session.segments.value },
     )
     val withChip = company?.chip?.collectAsState()?.value
     // A Group Watch Session on this part: the countdown, reports, and the others' pauses and jumps offered.

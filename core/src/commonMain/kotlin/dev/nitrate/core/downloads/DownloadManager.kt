@@ -153,6 +153,8 @@ class DownloadManager(
                     audioIndex = tracks?.audioIndex?.takeIf { fresh.size == 1 }, subtitleIndex = tracks?.subtitleIndex?.takeIf { fresh.size == 1 },
                     burnInSubtitles = tracks?.burnIn == true && !quality.isOriginal,
                     tripId = trip?.first, tripPickId = trip?.second,
+                    // From a group's card or a page entered from one: its plays count for that group.
+                    watchGroupId = item.watchGroupId.takeIf { trip == null && !auto },
                 )
             })
         }
@@ -555,6 +557,8 @@ class DownloadManager(
      * elsewhere), else this device's.
      */
     suspend fun resumePositionMs(record: DownloadRecord): Long {
+        // A group's download carries on where it was left with the group, never the user's own place.
+        if (record.watchGroupId != null) return if (record.groupPlayed) 0 else record.groupPositionMs
         if (record.pendingSync) return record.item.user.positionMs
         val remote = withTimeoutOrNull(3_000) { runCatching { server.userData(record.itemId) }.getOrNull() }
         return remote?.let { if (it.played) 0 else it.positionMs } ?: record.item.user.positionMs
@@ -577,6 +581,8 @@ class DownloadManager(
             else -> positionMs
         }
         edit(itemId) { r ->
+            // A group's download: the group's record and resume point, the user's own state untouched.
+            if (r.watchGroupId != null) return@edit r.copy(groupPlayed = played || r.groupPlayed, groupPositionMs = if (played) 0 else position, pendingSync = true)
             // Rewatching part of a watched item keeps it watched, as the server does.
             val user = r.item.user.copy(played = played || r.item.user.played, positionMs = position)
             r.copy(item = r.item.copy(user = user), pendingSync = true, watchedAtMs = now())
@@ -591,6 +597,20 @@ class DownloadManager(
     suspend fun syncWatchState(): Int {
         var synced = 0
         for (r in mine(store.data.value).filter { it.pendingSync }) {
+            r.watchGroupId?.let { group ->
+                // A group's download: counted in the group's record, or its resume point there. A group
+                // the user has left (or a server without the Companion) doesn't hold up the rest.
+                try {
+                    if (r.groupPlayed) server.markForGroups(listOf(group), listOf(r.itemId))
+                    else if (r.groupPositionMs > 0) server.setGroupResume(group, r.itemId, r.groupPositionMs)
+                    edit(r.key) { it.copy(pendingSync = false) }
+                    synced++
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                }
+                continue
+            }
             try {
                 val remote = server.userData(r.itemId)
                 val localAt = r.watchedAtMs ?: 0

@@ -46,6 +46,7 @@ class DownloadManagerTest {
     private val transcoded = ByteArray(3_000) { (it % 7).toByte() }
     private val requests = mutableListOf<HttpRequestData>()
     private val posted = mutableListOf<String>()
+    private val groupCalls = mutableListOf<String>()
 
     /** Swaps in a failure for download requests. */
     private var failDownloads: (MockRequestHandleScope.() -> HttpResponseData)? = null
@@ -78,6 +79,10 @@ class DownloadManagerTest {
                 respond("{}", headers = json)
             }
             path.endsWith("/UserData") -> respond(remoteUserData, headers = json)
+            path.contains("/Nitrate/Partners/") -> {
+                groupCalls += "${request.method.value} $path " + ((request.body as? OutgoingContent.ByteArrayContent)?.bytes()?.decodeToString() ?: "")
+                respond("{}", headers = json)
+            }
             path.contains("/Shows/") -> respond(showEpisodes, headers = json)
             path.contains("/Items/") -> respond(itemJson, headers = json)
             else -> respond("", HttpStatusCode.NotFound)
@@ -286,6 +291,33 @@ class DownloadManagerTest {
         assertEquals(300_000_000L, body["PlaybackPositionTicks"]!!.jsonPrimitive.content.toLong())
         assertEquals("false", body["Played"]!!.jsonPrimitive.content)
         assertEquals("1970-01-01T00:33:20Z", body["LastPlayedDate"]!!.jsonPrimitive.content)
+        assertFalse(record().pendingSync)
+    }
+
+    @Test
+    fun `a group's download counts for the group and leaves the user's own state alone`() = runBlocking {
+        signIn()
+        manager.enqueue(listOf(movie.copy(watchGroupId = "g1")), DownloadQuality.ORIGINAL, hevc = false)
+        manager.runQueue()
+        assertEquals("g1", record().watchGroupId)
+
+        // Left part-way: the group's resume point, the user's own untouched.
+        manager.recordPlayback(ITEM_ID, positionMs = 30_000, durationMs = 60_000, ended = false)
+        assertEquals(0, record().item.user.positionMs)
+        assertFalse(record().item.user.played)
+        assertEquals(30_000, manager.resumePositionMs(record()))
+        assertEquals(1, manager.syncWatchState())
+        assertTrue(groupCalls.single(), groupCalls.single().startsWith("PUT") && "/Groups/g1/Resume" in groupCalls.single())
+        assertTrue(posted.isEmpty())
+
+        // Watched: counted in the group's record, still not the user's own.
+        manager.recordPlayback(ITEM_ID, positionMs = 60_000, durationMs = 60_000, ended = true)
+        assertFalse(record().item.user.played)
+        assertEquals(0, manager.resumePositionMs(record()))
+        assertEquals(1, manager.syncWatchState())
+        assertEquals(2, groupCalls.size)
+        assertTrue(groupCalls[1], "g1" in groupCalls[1])
+        assertTrue(posted.isEmpty())
         assertFalse(record().pendingSync)
     }
 

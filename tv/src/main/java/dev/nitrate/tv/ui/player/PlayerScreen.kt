@@ -286,6 +286,7 @@ fun PlayerScreen(
     val company = rememberWatchCompany(
         watchGroups, item, enabled = clipEndMs == null && testPlay == null, groupChat,
         positionMs = { player.currentPosition }, durationMs = { player.duration.coerceAtLeast(0L) },
+        segments = { session.segments.value },
     )
     val withChip = company?.chip?.collectAsState()?.value
     // The group button (counting for, Group Watch Session): only where a group is involved.

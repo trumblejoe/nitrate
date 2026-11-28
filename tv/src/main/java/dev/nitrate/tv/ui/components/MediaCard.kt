@@ -67,6 +67,8 @@ fun MediaCard(
     /** The title's logo over the picture instead of words under it; words come back when it won't load. */
     logoUrl: String? = null,
 ) {
+    // On a page entered from a watch group, its parts' tick and progress are the group's (pressing still acts on the item).
+    @Suppress("NAME_SHADOWING") val item = dev.nitrate.tv.ui.partners.asShownHere(item)
     var focused by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var logoFailed by androidx.compose.runtime.remember(logoUrl) { androidx.compose.runtime.mutableStateOf(false) }
     val logoShown = logoUrl != null && !logoFailed

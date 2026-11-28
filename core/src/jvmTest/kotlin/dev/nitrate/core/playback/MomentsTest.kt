@@ -42,4 +42,19 @@ class MomentsTest {
         assertEquals(TrickplayTile(2, 9, 4), info.tileFor(99_000_000))
         assertNull(info.copy(thumbnailCount = 0).tileFor(0))
     }
+
+    @Test
+    fun `a part counts as watched at its credits, else at 90 percent`() {
+        // An anime's ending starts before 90%: watched from there, and a stop there is reported as the end.
+        val ending = MediaSegment(SegmentKind.OUTRO, 1_290_000, 1_440_000)
+        assertEquals(1_290_000L, PlaybackMoments.watchedAtMs(1_440_000, listOf(ending)))
+        assertEquals(1_440_000L, PlaybackMoments.stopAtMs(1_300_000, 1_440_000, listOf(ending)))
+        assertEquals(1_200_000L, PlaybackMoments.stopAtMs(1_200_000, 1_440_000, listOf(ending)))
+        // Without credits: Jellyfin's 90%.
+        assertEquals(1_296_000L, PlaybackMoments.watchedAtMs(1_440_000, emptyList()))
+        // Credits later than 90% don't hold it back; a credits mark in the first half is a mistake.
+        assertEquals(1_296_000L, PlaybackMoments.watchedAtMs(1_440_000, listOf(MediaSegment(SegmentKind.OUTRO, 1_400_000, 1_440_000))))
+        assertEquals(1_296_000L, PlaybackMoments.watchedAtMs(1_440_000, listOf(MediaSegment(SegmentKind.OUTRO, 500_000, 1_440_000))))
+        assertNull(PlaybackMoments.watchedAtMs(0, listOf(ending)))
+    }
 }

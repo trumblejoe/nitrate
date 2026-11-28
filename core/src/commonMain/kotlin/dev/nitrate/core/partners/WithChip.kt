@@ -163,6 +163,14 @@ data class CountAsk(val itemIds: List<String>, val what: String, val counting: C
     }
 }
 
+/** Where the item playing had got to, sampled as it plays (with where it counts as watched). */
+data class PlaySample(val itemId: String, val positionMs: Long, val durationMs: Long, val watchedAtMs: Long?) {
+    companion object {
+        fun of(itemId: String, positionMs: Long, durationMs: Long, segments: List<dev.nitrate.core.model.MediaSegment>) =
+            PlaySample(itemId, positionMs, durationMs, dev.nitrate.core.playback.PlaybackMoments.watchedAtMs(durationMs, segments))
+    }
+}
+
 /**
  * Who one playback is watched with, for the player's group button ("Counting for you and Tommy · Change"):
  * where it started ([start]'s origin: a group's card, "for myself", elsewhere), the user's change
@@ -322,20 +330,40 @@ class WatchCompany(
     }
 
     /**
-     * [itemId] stopped at [positionMs] of [durationMs] (or [ended]): played to the end (Jellyfin's
-     * 90%), it counts once, for everyone in the room, else for the groups it counts for.
+     * [itemId] is at [positionMs] of [durationMs] while it plays: once it reaches where it counts as
+     * watched ([watchedAtMs]: the credits, else 90 %; [dev.nitrate.core.playback.PlaybackMoments.watchedAtMs]),
+     * it counts there and then, rather than only as the player closes (moving on as the ending
+     * starts, or the player closing, can't lose it).
      */
-    fun left(itemId: String, positionMs: Long, durationMs: Long, ended: Boolean = false) {
-        val done = ended || (durationMs > 0 && positionMs >= durationMs * PLAYED_AT)
-        if (!done) {
-            // Left part-way while watching for a group (its card, or the room): the group's own
-            // resume point, so its card carries on from here whatever the user plays on their own.
-            val playing = item.value?.takeIf { it.id == itemId } ?: return
-            if (positionMs < RESUME_FROM) return
-            val group = inRoom.value?.groupId ?: counting(playing)?.groups?.singleOrNull()?.id ?: return
-            writes.launch { runCatching { resume(group, itemId, positionMs) } }
+    fun playing(itemId: String, positionMs: Long, durationMs: Long, watchedAtMs: Long? = null) {
+        if (done(positionMs, durationMs, watchedAtMs)) count(itemId)
+    }
+
+    /**
+     * [itemId] stopped at [positionMs] of [durationMs] (or [ended]): played to where it counts as
+     * watched ([watchedAtMs], else Jellyfin's 90 %), it counts once, for everyone in the room, else
+     * for the groups it counts for; left before that while watching for a group, the group's own
+     * resume point.
+     */
+    fun left(itemId: String, positionMs: Long, durationMs: Long, ended: Boolean = false, watchedAtMs: Long? = null) {
+        if (ended || done(positionMs, durationMs, watchedAtMs)) {
+            count(itemId)
             return
         }
+        // Left part-way while watching for a group (its card, or the room): the group's own
+        // resume point, so its card carries on from here whatever the user plays on their own.
+        if (itemId in counted) return
+        val playing = item.value?.takeIf { it.id == itemId } ?: return
+        if (positionMs < RESUME_FROM) return
+        val group = inRoom.value?.groupId ?: counting(playing)?.groups?.singleOrNull()?.id ?: return
+        writes.launch { runCatching { resume(group, itemId, positionMs) } }
+    }
+
+    private fun done(positionMs: Long, durationMs: Long, watchedAtMs: Long?) =
+        durationMs > 0 && positionMs >= (watchedAtMs ?: (durationMs * PLAYED_AT).toLong())
+
+    /** [itemId] watched: counted once, for everyone in the room, else for the groups it counts for. */
+    private fun count(itemId: String) {
         if (itemId in counted) return
         val r = inRoom.value
         if (r != null) {

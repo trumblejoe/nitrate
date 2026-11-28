@@ -909,6 +909,24 @@ class PlaybackSession(
     /** A recap clip: nothing is reported to the server (watch history and resume points stay as they were). */
     private var quiet = false
 
+    /** The item playing, where it counts as watched ([dev.nitrate.core.playback.PlaybackMoments.watchedAtMs]) and its length; noted while it plays. */
+    @Volatile private var watchedAt: Triple<String, Long, Long>? = null
+
+    /** Notes [watchedAt] for what's playing now (main thread: reads the exo). */
+    private fun noteWatchedAt() {
+        val id = _item.value?.id ?: return
+        val duration = exo.duration.takeIf { it > 0 } ?: return
+        watchedAt = Triple(id, dev.nitrate.core.playback.PlaybackMoments.watchedAtMs(duration, _segments.value) ?: return, duration)
+    }
+
+    /**
+     * Where [itemId]'s stop is reported: past the credits (or 90 %), its end, so Jellyfin marks it
+     * watched as when it plays to the end (skipping to the next episode as the ending starts
+     * counts); before that, where it stopped.
+     */
+    private fun stopAt(itemId: String, positionMs: Long): Long =
+        watchedAt?.takeIf { it.first == itemId && positionMs >= it.second && positionMs < it.third }?.third ?: positionMs
+
     /** Where a recap clip stops (null: play to the end). */
     private var clipEndMs: Long? = null
 
@@ -994,6 +1012,7 @@ class PlaybackSession(
         progressJob = scope.launch {
             while (isActive) {
                 delay(PROGRESS_INTERVAL_MS)
+                noteWatchedAt()
                 localProgress?.invoke(exo.currentPosition, exo.duration.coerceAtLeast(0), false)
             }
         }
@@ -1483,7 +1502,8 @@ class PlaybackSession(
             // The plan this replaces (a track change): stopped now that the new one exists, so the
             // server doesn't end the old stream while it's still playing.
             _plan.value?.takeIf { !quiet && (it.playSessionId != p.playSessionId || it.itemId != p.itemId) }?.let { old ->
-                server.reportStopped(old, exo.currentPosition)
+                // Another item (not a track change): past the credits it was watched.
+                server.reportStopped(old, if (old.itemId != p.itemId) stopAt(old.itemId, exo.currentPosition) else exo.currentPosition)
             }
             log("Server: ${p.method}" + (if (p.transcodeReasons.isNotEmpty()) " because ${p.transcodeReasons.joinToString(", ")}" else "") + "; ${dev.nitrate.core.playback.PlaybackReport.streamSummary(p)}")
             // The TV's refresh-rate switch, before the player sets anything up: the HDMI link drops
@@ -1514,6 +1534,7 @@ class PlaybackSession(
                 // Track changes made on the device keep the session (and update the plan).
                 val now = _plan.value ?: break
                 if (now.playSessionId != p.playSessionId || now.itemId != p.itemId) break
+                noteWatchedAt()
                 server.reportProgress(now, exo.currentPosition, isPaused = !exo.isPlaying)
             }
         }
@@ -1893,10 +1914,14 @@ class PlaybackSession(
         if (local != null) {
             val position = exo.currentPosition
             val duration = exo.duration.coerceAtLeast(0)
+            noteWatchedAt()
+            // Past the credits counts as watched, as when it plays to the end.
+            val watched = _item.value?.let { stopAt(it.id, position) != position } == true
             // Outlives this session, so leaving the exo still saves where it stopped.
-            appScope.launch { local(position, duration, false) }
+            appScope.launch { local(position, duration, watched) }
         } else if (!quiet) {
-            _plan.value?.let { server.reportStopped(it, exo.currentPosition) }
+            noteWatchedAt()
+            _plan.value?.let { server.reportStopped(it, stopAt(it.itemId, exo.currentPosition)) }
         }
         group?.detach(syncPlayer)
         group = null

@@ -67,24 +67,30 @@ fun rememberWatchCompany(
     groupChat: TimelineChat?,
     positionMs: () -> Long,
     durationMs: () -> Long,
+    /** The item's segments: its marked credits are where it counts as watched ([dev.nitrate.core.playback.PlaybackMoments.watchedAtMs]). */
+    segments: () -> List<dev.nitrate.core.model.MediaSegment> = { emptyList() },
 ): WatchCompany? {
     if (!enabled) return null
     val scope = rememberCoroutineScope()
     val company = remember { actions.container.watchCompany(scope) }
     val position by rememberUpdatedState(positionMs)
     val duration by rememberUpdatedState(durationMs)
+    val marks by rememberUpdatedState(segments)
     // Where the item playing has got to, so that leaving it (the next one, or the player closing) can tell.
-    val last = remember { mutableStateOf<Triple<String, Long, Long>?>(null) }
+    val last = remember { mutableStateOf<dev.nitrate.core.partners.PlaySample?>(null) }
     LaunchedEffect(company, item?.id) {
         val i = item ?: return@LaunchedEffect
-        last.value?.takeIf { it.first != i.id }?.let { (id, at, of) -> company.left(id, at, of) }
+        last.value?.takeIf { it.itemId != i.id }?.let { company.left(it.itemId, it.positionMs, it.durationMs, watchedAtMs = it.watchedAtMs) }
         company.start(i, actions.container.groupStandings.value)
         while (true) {
-            last.value = Triple(i.id, position(), duration())
+            val sample = dev.nitrate.core.partners.PlaySample.of(i.id, position(), duration(), marks())
+            last.value = sample
+            // Counted as it reaches the credits (or 90 %), not only as the player closes.
+            company.playing(sample.itemId, sample.positionMs, sample.durationMs, sample.watchedAtMs)
             delay(1_000)
         }
     }
-    DisposableEffect(company) { onDispose { last.value?.let { (id, at, of) -> company.left(id, at, of) } } }
+    DisposableEffect(company) { onDispose { last.value?.let { company.left(it.itemId, it.positionMs, it.durationMs, watchedAtMs = it.watchedAtMs) } } }
     LaunchedEffect(company, groupChat) { company.chip.collect { groupChat?.focus(chatFocus(it)) } }
     return company
 }

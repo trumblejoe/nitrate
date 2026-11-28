@@ -499,7 +499,8 @@ fun DownloadDialog(actions: AppActions, items: List<MediaItem>, title: String, o
                             audioIndex = t?.audioIndex, subtitleIndex = t?.subtitleIndex,
                             burnIn = burnIn && !selected.isOriginal && (t?.subtitleIndex ?: -1) >= 0,
                         )
-                        downloads.enqueue(items, selected, settings.hevc && !selected.isOriginal, request)
+                        // On a page entered from a watch group: the download is the group's (its plays count there).
+                        downloads.enqueue(items.map { i -> actions.groupOf(i)?.let { g -> i.copy(watchGroupId = g) } ?: i }, selected, settings.hevc && !selected.isOriginal, request)
                         onDismiss()
                     }
                 },

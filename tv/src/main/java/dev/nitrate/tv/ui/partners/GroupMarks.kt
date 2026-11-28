@@ -78,6 +78,13 @@ fun groupMarkFor(item: MediaItem): WatchGroup? {
     return GroupMarks.groupFor(marks.groupId, item, info, standings)
 }
 
+/**
+ * [item] as drawn on this page: entered from a group, a part of its titles shows the group's tick
+ * and progress (`GroupMarks.asGroupSees`), never the user's own; elsewhere, as it is.
+ */
+@Composable
+fun asShownHere(item: MediaItem): MediaItem = groupMarkFor(item)?.let { GroupMarks.asGroupSees(it, item) } ?: item
+
 /** "Also mark it watched for Kim, where it's next too?": Just this group (focused; Back is the same) / All groups where it's next. */
 @Composable
 private fun GroupMarkQuestion(marks: TvGroupMarks) {

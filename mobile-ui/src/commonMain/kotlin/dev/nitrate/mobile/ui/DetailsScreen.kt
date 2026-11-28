@@ -541,15 +541,17 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
                     Modifier.align(Alignment.Center).size(36.dp).clip(CircleShape).background(Color(0x88000000)).pressable({ actions.playFromDetails(episode, false) }),
                     Alignment.Center,
                 ) { Icon(Icons.Default.PlayArrow, "Play", tint = Color.White) }
-                val pct = episode.user.playedPercentage?.toFloat()?.div(100f)
-                if (pct != null && pct > 0f && !episode.user.played && LocalDisplayPrefs.current.progressBars) {
+                // Entered from a watch group: the tick and progress are the group's, not the user's own.
+                val shown = groupMarkFor(actions, episode)?.let { dev.nitrate.core.partners.GroupMarks.asGroupSees(it, episode) } ?: episode
+                val pct = shown.user.playedPercentage?.toFloat()?.div(100f)
+                if (pct != null && pct > 0f && !shown.user.played && LocalDisplayPrefs.current.progressBars) {
                     Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color(0x99000000))) {
                         Box(Modifier.fillMaxWidth(pct).height(3.dp).background(accentColor()))
                     }
                 }
                 Row(Modifier.align(Alignment.TopEnd).padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (downloaded) Badge(NitrateIcons.DownloadDone, "Downloaded")
-                    if (episode.user.played && LocalDisplayPrefs.current.watchedMarks) Badge(Icons.Default.Check, "Watched")
+                    if (shown.user.played && LocalDisplayPrefs.current.watchedMarks) Badge(Icons.Default.Check, if (shown !== episode) "Watched with the group" else "Watched")
                 }
             }
             Column(Modifier.padding(start = 14.dp).weight(1f)) {

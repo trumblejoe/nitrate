@@ -66,6 +66,16 @@ data class DownloadRecord(
     /** Packed for this [Trip] (and which of its picks): cleared with the trip, never by smart downloads. */
     val tripId: String? = null,
     val tripPickId: String? = null,
+    /**
+     * Downloaded from a watch group's card or a page entered from a group: its plays count for that
+     * group, as plays from the card do, and never touch the user's own Watched or resume point. One
+     * downloaded from the user's own library (null) plays as theirs, whatever card it's played from.
+     */
+    val watchGroupId: String? = null,
+    /** For [watchGroupId]: watched with the group on this device (sent by `syncWatchState`). */
+    val groupPlayed: Boolean = false,
+    /** For [watchGroupId]: where it was left with the group on this device. */
+    val groupPositionMs: Long = 0,
 ) {
     val key get() = Key(serverUrl, userId, itemId)
 

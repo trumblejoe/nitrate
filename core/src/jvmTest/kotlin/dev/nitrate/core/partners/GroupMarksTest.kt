@@ -19,6 +19,18 @@ class GroupMarksTest {
     private val info = PartnersInfo(listOf(tommy, kim, ahead), emptyList(), emptyList())
     private val standings = mapOf("bear" to KeepUp.of("bear", eps, emptyList(), info.groups))
 
+    @Test fun aPartIsDrawnAsTheGroupHasIt() {
+        // Watched alone long ago, not yet with the group: no tick here; the group's resume point is its progress.
+        val alone = eps[4].copy(runtimeMs = 1_000_000, user = eps[4].user.copy(played = true))
+        val g = tommy.copy(resume = mapOf("e5" to GroupResume(250_000, 1)))
+        val shown = GroupMarks.asGroupSees(g, alone)
+        assertFalse(shown.user.played)
+        assertEquals(250_000L, shown.user.positionMs)
+        assertEquals(25.0, shown.user.playedPercentage!!, 0.01)
+        // Watched with the group: ticked, whatever the user's own state.
+        assertTrue(GroupMarks.asGroupSees(tommy, eps[2]).user.played)
+    }
+
     @Test fun onlyAPageEnteredFromTheGroupHasItsMark() {
         // Entered from Tommy's group: the episode has the group's mark; the show itself doesn't (its episodes do).
         assertEquals("t", GroupMarks.groupFor("t", eps[3], info, standings)?.id)

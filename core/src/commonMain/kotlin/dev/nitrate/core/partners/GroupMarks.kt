@@ -29,6 +29,19 @@ object GroupMarks {
     /** Whether [item] is watched in [group]'s own record. */
     fun watched(group: WatchGroup, item: MediaItem): Boolean = group.ownRecord?.contains(item.id) == true
 
+    /**
+     * [item] as [group] has it, for drawing on a page entered from the group: watched by the group's
+     * own record and part-way by its own resume point, so a thumbnail's tick and progress bar are
+     * the group's, not the user's own (who may have watched it alone long before). Only for
+     * showing it: what a press does still goes by the item itself.
+     */
+    fun asGroupSees(group: WatchGroup, item: MediaItem): MediaItem {
+        val played = watched(group, item)
+        val position = if (played) 0L else group.resume[item.id]?.positionMs ?: 0L
+        val percent = item.runtimeMs?.takeIf { it > 0 && position > 0 }?.let { position * 100.0 / it }
+        return item.copy(user = item.user.copy(played = played, positionMs = position, playedPercentage = percent))
+    }
+
     /** The mark's words: "Watched with Tommy & Suzy" / "Not watched with Tommy & Suzy" (said by screen readers too). */
     fun label(group: WatchGroup, item: MediaItem): String = (if (watched(group, item)) "Watched with " else "Not watched with ") + WithChip.nameOf(group)
 

@@ -418,9 +418,10 @@ class ApplePlayerSession(private val container: AppContainer, private val report
             // Outlives the screen: the last position is saved after the player's gone.
             val at = currentMs()
             val d = download!!
-            val ended = _ended.value
+            // Past the credits counts as watched, as when it plays to the end (PlaybackMoments.watchedAtMs).
+            val ended = _ended.value || dev.nitrate.core.playback.PlaybackMoments.stopAtMs(at, _durationMs.value, _segments.value) != at
             kotlinx.coroutines.MainScope().launch { runCatching { container.downloads.recordPlayback(d.itemId, at, _durationMs.value, ended) } }
-        } else if (reported) _plan.value?.let { server.reportStopped(it, currentMs()) }
+        } else if (reported) _plan.value?.let { server.reportStopped(it, dev.nitrate.core.playback.PlaybackMoments.stopAtMs(currentMs(), _durationMs.value, _segments.value)) }
         mpv?.release()
         endObserver?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }
         player.pause()
