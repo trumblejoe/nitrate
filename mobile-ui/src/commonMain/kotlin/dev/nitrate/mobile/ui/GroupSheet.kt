@@ -127,15 +127,15 @@ fun GroupSheet(
             when (page) {
                 GroupPage.MAIN -> GroupMain(chip, problem, onStartSession, onLeaveSession, onEndSession) { page = it }
                 GroupPage.COUNT -> {
-                    Text("Counting for", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("Who what you play to the end counts for.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Counts on", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("Which track what you play to the end counts on.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val chosen = chip.group?.id
-                    chip.groups.forEach { g -> Choice("With " + WithChip.nameOf(g), selected = chosen == g.id) { onCountFor(WatchingWith.Group(g.id)); back() } }
-                    Choice("No group", selected = chosen == null) { onCountFor(WatchingWith.JustMe); back() }
+                    chip.groups.forEach { g -> Choice(dev.nitrate.core.partners.Tracks.with(WithChip.nameOf(g)).replaceFirstChar { it.uppercase() }, selected = chosen == g.id) { onCountFor(WatchingWith.Group(g.id)); back() } }
+                    Choice(dev.nitrate.core.partners.Tracks.OWN_TITLE, selected = chosen == null) { onCountFor(WatchingWith.JustMe); back() }
                     if (chip.group != null) {
                         Action(
                             "We're in the same room",
-                            if (chip.roomNames.isEmpty()) "Pick who's watching here with you: it counts for them too" else "Here: " + WithChip.and(chip.roomNames) + " · change",
+                            if (chip.roomNames.isEmpty()) "Pick who's watching here with you: it counts on their tracks too" else "Here: " + WithChip.and(chip.roomNames) + " · change",
                         ) { page = GroupPage.ROOM }
                     }
                     TextButton(onClick = back) { Text("Back") }
@@ -342,7 +342,7 @@ internal fun EmojiList(groups: List<dev.nitrate.core.companion.EmojiGroup>, onPi
 private fun RoomPicker(chip: WithChip, group: dev.nitrate.core.partners.WatchGroup, onDone: (List<String>) -> Unit, onBack: () -> Unit) {
     var here by remember { mutableStateOf(chip.room?.takeIf { it.groupId == group.id }?.present?.toSet() ?: group.others.map { it.id }.toSet()) }
     Text("We're in the same room", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-    Text("Who's watching here with you? What you play to the end counts for them too.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("Who's watching here with you? What you play to the end counts on their tracks too.", color = MaterialTheme.colorScheme.onSurfaceVariant)
     group.others.forEach { p ->
         Row(
             Modifier.fillMaxWidth().toggleable(value = p.id in here, role = Role.Checkbox) { on -> here = if (on) here + p.id else here - p.id }.padding(vertical = 6.dp),

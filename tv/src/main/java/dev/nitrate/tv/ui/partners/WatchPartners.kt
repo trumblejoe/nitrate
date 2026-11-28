@@ -743,6 +743,8 @@ fun GroupSetupDialog(container: AppContainer, start: dev.nitrate.core.partners.G
                 return@Column
             }
             Text(setup.heading, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            // The first page says how a group counts: a track of its own for each of you, apart from your own.
+            setup.note?.let { Text(it, color = MaterialTheme.colorScheme.onSurface) }
             when (setup.step) {
                 dev.nitrate.core.partners.GroupSetup.Step.WHAT -> {
                     if (!easy) Text("Pick one or more: shows, films, playlists or collections. The group keeps pace on each.", color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -43,7 +43,7 @@ object GroupMarks {
     }
 
     /** The mark's words: "Watched with Tommy & Suzy" / "Not watched with Tommy & Suzy" (said by screen readers too). */
-    fun label(group: WatchGroup, item: MediaItem): String = (if (watched(group, item)) "Watched with " else "Not watched with ") + WithChip.nameOf(group)
+    fun label(group: WatchGroup, item: MediaItem): String = (if (watched(group, item)) "Watched on " else "Not watched on ") + Tracks.with(WithChip.nameOf(group))
 
     /** Its short caption under the button: "Tommy & Suzy". */
     fun caption(group: WatchGroup): String = WithChip.nameOf(group)
@@ -56,6 +56,6 @@ object GroupMarks {
     fun alsoNext(item: MediaItem, group: WatchGroup, watched: Boolean, info: PartnersInfo?, standings: Map<String, KeepUp>): List<WatchGroup> =
         if (!watched) emptyList() else WatchPartners.alsoNextIn(item, group.id, info, standings)
 
-    /** "Also mark it watched for Kim, where it's next too?" */
-    fun question(others: List<WatchGroup>): String = "Also mark it watched for " + WatchPartners.names(others.map { WithChip.nameOf(it) }) + ", where it's next too?"
+    /** "Also mark it watched on your track with Kim, where it's next too?" */
+    fun question(others: List<WatchGroup>): String = "Also mark it watched on " + Tracks.with(WatchPartners.names(others.map { WithChip.nameOf(it) })) + ", where it's next too?"
 }

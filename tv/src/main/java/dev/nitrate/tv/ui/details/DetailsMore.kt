@@ -112,7 +112,7 @@ internal fun MorePanel(
                 if (item.isPlayable) add(Triple("How it plays", "Whether it plays as it is here, and why", { open = "plays" }))
                 if (video && ("notes" in features || "moments" in features)) add(Triple("Group notes", "What your groups said along it, up to where you've got", { open = "moments" }))
                 if (video && "chathistory" in features) add(Triple("Earlier chat", "What was said watching it together", { open = "chat" }))
-                if (together) add(Triple("Watch group…", "Mark for the group, start a Group Watch Session, same room, invite, leave", { open = "together" }))
+                if (together) add(Triple("Watch group…", "Mark on your track, start a Group Watch Session, same room, invite, leave", { open = "together" }))
                 if (item.isPlayable || item.kind == ItemKind.SERIES) add(Triple("Add to a playlist or collection", null, { open = "add" }))
                 studio?.let { add(Triple("More from $it", null, { onDismiss(); onBrowse(it, it, null) })) }
                 year?.let { add(Triple("More from $it", null, { onDismiss(); onBrowse("From $it", null, it) })) }

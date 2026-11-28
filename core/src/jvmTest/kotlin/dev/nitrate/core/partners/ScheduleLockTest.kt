@@ -92,7 +92,7 @@ class ScheduleLockTest {
         val withSam = PluginHost(server(group("g1", sam, weekly.copy(locked = true))), noStore, Session(listOf("me", "Sam")))
         assertEquals(listOf("OK"), ask(plugin.beforePlay(eps[2], withSam)).choices.map { it.label })
         // Rewatching something the user has seen stays free of the lock (asked as Ask first).
-        assertEquals(listOf("Watch for myself", "Not now"), ask(plugin.beforePlay(eps[2].copy(user = UserState(played = true)), host)).choices.map { it.label })
+        assertEquals(listOf("Watch on my own", "Not now"), ask(plugin.beforePlay(eps[2].copy(user = UserState(played = true)), host)).choices.map { it.label })
     }
 
     /** A session can't be started on what the lock refuses (everyone was left in one nobody could play). */
@@ -145,9 +145,9 @@ class ScheduleLockTest {
         val host = PluginHost(server(group("g1", sam, weekly)), noStore, Session(emptyList()))
         val a = ask(plugin.beforePlay(eps[2], host))
         assertEquals("Opens Thursday 7pm", a.title)
-        assertEquals(listOf("Watch for myself", "Not now"), a.choices.map { it.label })
+        assertEquals(listOf("Watch on my own", "Not now"), a.choices.map { it.label })
         assertEquals(a.choices.map { it.label }, ask(plugin.beforePlay(eps[2], host, card)).choices.map { it.label })
-        // "Watch for myself" asks nothing more; what's out plays.
+        // "Watch on my own" asks nothing more; what's out plays.
         assertEquals(GuardDecision.Allow, plugin.beforePlay(eps[2], host, PlayOrigin.ForMyself))
         assertEquals(GuardDecision.Allow, plugin.beforePlay(eps[1], host))
         // Together off and binge: nothing to ask.
@@ -167,7 +167,7 @@ class ScheduleLockTest {
         val both = PluginHost(server(group("g1", sam, weekly), group("g2", kim, GroupSchedule(together = true, locked = true))), noStore, Session(emptyList()))
         val only = ask(plugin.beforePlay(eps[2], both))
         assertEquals("Kim hasn't watched this yet", only.title)
-        assertFalse(only.choices.any { it.label == "Watch for myself" })
+        assertFalse(only.choices.any { it.label == "Watch on my own" })
         // Nothing locked in either: the first group's question, as before.
         val open = PluginHost(server(group("g1", sam, GroupSchedule(together = true)), group("g2", kim, GroupSchedule(together = true))), noStore, Session(emptyList()))
         assertEquals("Sam hasn't watched this yet", ask(plugin.beforePlay(eps[2], open)).title)

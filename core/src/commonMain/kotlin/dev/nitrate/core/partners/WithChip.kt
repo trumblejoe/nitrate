@@ -47,8 +47,8 @@ data class WithChip(
     val label: String get() = when {
         inSession -> if (session.isEmpty()) "In a Group Watch Session · waiting for others" else "In a Group Watch Session with " + session.joinToString(", ")
         roomNames.isNotEmpty() -> "In the room with " + and(roomNames)
-        context.justMe -> "No group · Change"
-        else -> "Counting for " + youAnd(context.groups.flatMap { g -> g.others.map { it.name } }.distinct()) + " · Change"
+        context.justMe -> Tracks.OWN_TITLE + " · Change"
+        else -> Tracks.with(and(context.groups.flatMap { g -> g.others.map { it.name } }.distinct())).replaceFirstChar { it.uppercase() } + " · Change"
     }
 
     /**
@@ -58,7 +58,7 @@ data class WithChip(
     val button: String get() = when {
         inSession -> if (session.isEmpty()) "Group Watch Session" else "Group Watch Session · " + and(session)
         roomNames.isNotEmpty() -> and(roomNames) + " · in the room"
-        else -> group?.let { nameOf(it) } ?: "No group"
+        else -> group?.let { nameOf(it) } ?: "Own track"
     }
 
     /** Initials for the button's avatars: the people of the group it counts for, or in the session (at most three). */
@@ -78,7 +78,7 @@ data class WithChip(
     val ambiguous: Boolean get() = !inSession && groups.size > 1 && context.reason in AUTO
 
     /** "Counting for you and Tommy" (or "Counting for just you"). */
-    val counting: String get() = "Counting for " + (group?.let { g -> youAnd(g.others.map { it.name }) } ?: "just you")
+    val counting: String get() = "Counting on " + (group?.let { g -> Tracks.with(nameOf(g)) } ?: Tracks.OWN)
 
     /** Who's here, for the panel: "You, Tommy and Suzy, in a Group Watch Session", "You and Tommy, in the room", "Watching on your own". */
     val who: String get() = when {
@@ -161,6 +161,21 @@ data class CountAsk(val itemIds: List<String>, val what: String, val counting: C
         const val ALL = "All groups where it's next"
         val CHOICES = listOf(JUST_THIS, ALL)
     }
+}
+
+/**
+ * The words for where a play counts. Everyone has their own track (Jellyfin's Watched and resume
+ * points) and, in each watch group, a track with that group (the group's record and resume point
+ * for them): what's played from the group counts on the latter, and only for the one who played it.
+ */
+object Tracks {
+    /** "your track with Tommy & Suzy". */
+    fun with(names: String) = "your track with $names"
+    const val OWN = "your own track"
+    const val OWN_TITLE = "Your own track"
+
+    /** The idea in two sentences, for setting up a group and answering an invite. */
+    const val EXPLAINED = "You'll each have a track with the group, apart from your own. What you play from the group counts on your track there; your own watching stays as it is."
 }
 
 /** Where the item playing had got to, sampled as it plays (with where it counts as watched). */

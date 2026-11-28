@@ -194,7 +194,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                     partnerProgress.filter { enteredGroup == null || it.groupId == enteredGroup }.groupBy { it.groupId }.values.forEach { group ->
                         Text(
                             "Watching with " + group.joinToString(", ") { "${it.userName} (${it.last ?: "not started"})" } +
-                                if (enteredGroup != null) ". Plays here count for the group; the people button marks it for them." else "",
+                                if (enteredGroup != null) ". Plays here count on your track with them, not your own." else "",
                             style = MaterialTheme.typography.labelLarge, color = accentColor(),
                         )
                     }
@@ -551,7 +551,7 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
                 }
                 Row(Modifier.align(Alignment.TopEnd).padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (downloaded) Badge(NitrateIcons.DownloadDone, "Downloaded")
-                    if (shown.user.played && LocalDisplayPrefs.current.watchedMarks) Badge(Icons.Default.Check, if (shown !== episode) "Watched with the group" else "Watched")
+                    if (shown.user.played && LocalDisplayPrefs.current.watchedMarks) Badge(Icons.Default.Check, if (shown !== episode) "Watched on your track with the group" else "Watched")
                 }
             }
             Column(Modifier.padding(start = 14.dp).weight(1f)) {
@@ -640,7 +640,7 @@ private fun DetailsMoreSheet(actions: AppActions, item: MediaItem, canManage: Bo
         if (video && (container.companionOffers("notes") || container.companionOffers("moments"))) entry("Group notes", "What your groups said along it, up to where you've got") { open = "moments" }
         if (video && container.companionOffers("chathistory")) entry("Earlier chat", "What was said watching it together") { open = "chat" }
         // In one of the user's watch groups: the same choices as a long press on its Watching together card.
-        if (together) entry("Watch group…", "Mark for the group, start a Group Watch Session, same room, invite, leave") { open = "together" }
+        if (together) entry("Watch group…", "Mark on your track, start a Group Watch Session, same room, invite, leave") { open = "together" }
         if (item.isPlayable || item.kind == ItemKind.SERIES || item.kind == ItemKind.MUSIC_ALBUM) entry("Add to a playlist or collection", null) { open = "add" }
         if (!music && (video || item.kind == ItemKind.SERIES || item.kind == ItemKind.SEASON || item.kind == ItemKind.BOX_SET)) entry("Pack for a trip", "Have it on your phone, tablet or laptop while you're away") { open = "trip" }
         studio?.let { entry("More from $it", null) { onDismiss(); actions.nav.navigate(PersonRoute("", it, studio = it)) } }

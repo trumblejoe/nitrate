@@ -85,7 +85,7 @@ fun groupMarkFor(item: MediaItem): WatchGroup? {
 @Composable
 fun asShownHere(item: MediaItem): MediaItem = groupMarkFor(item)?.let { GroupMarks.asGroupSees(it, item) } ?: item
 
-/** "Also mark it watched for Kim, where it's next too?": Just this group (focused; Back is the same) / All groups where it's next. */
+/** "Also mark it watched on your track with Kim, where it's next too?": Just this group (focused; Back is the same) / All groups where it's next. */
 @Composable
 private fun GroupMarkQuestion(marks: TvGroupMarks) {
     val (group, item, others) = marks.asking ?: return

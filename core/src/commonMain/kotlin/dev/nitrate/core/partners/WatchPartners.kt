@@ -456,6 +456,7 @@ data class InviteSummary(val heading: String, val lines: List<Pair<String, Strin
                 "What" to r.titleNames,
                 "With" to WatchPartners.names(listOf(r.fromName) + others),
                 "Who'll see you" to "${WatchPartners.names(r.willSee)}: your name, and how far you are in what the group watches",
+                "Your track" to Tracks.EXPLAINED,
             )
             val rules = r.schedule?.termLines.orEmpty()
             return InviteSummary(
@@ -710,7 +711,7 @@ object WatchPartners {
     /**
      * Which groups a playback of [item] counts for, by where it started ([origin]): from a group's
      * card, that group (with the others it's next in as [Counting.alsoNext]); started anywhere
-     * else (Continue Watching, the library, search, downloads) or "Watch for myself", no group:
+     * else (Continue Watching, the library, search, downloads) or "Watch on my own", no group:
      * the group you came in through decides, nothing guesses. Live sessions are counted by the server for whoever's
      * there (the Companion's `TogetherRecorder`), not by this.
      */
@@ -727,7 +728,7 @@ object WatchPartners {
      * ([with]: a group on the title, or just them); in a live session ([liveParticipants], names),
      * every group on the title with a member there; else, started anywhere but a group's card, just the user. Empty for a title
      * the user shares with nobody. [origin]: where the playback started (a group's card counts for
-     * that group, "Watch for myself" for none), after the user's own choice and a live session.
+     * that group, "Watch on my own" for none), after the user's own choice and a live session.
      */
     fun contextFor(
         item: MediaItem,
@@ -762,7 +763,7 @@ object WatchPartners {
 /**
  * Where a playback started, which decides which groups it counts for ([WatchPartners.countingFor]):
  * a group's card on Home's Watching together row ([GroupCard], [MediaItem.watchGroupId]), anywhere
- * else ([Elsewhere]), or "Watch for myself" from a guard's question ([ForMyself]: no group).
+ * else ([Elsewhere]), or "Watch on my own" from a guard's question ([ForMyself]: no group).
  */
 sealed interface PlayOrigin {
     data class GroupCard(val groupId: String) : PlayOrigin
@@ -876,7 +877,7 @@ data class PartLock(val group: WatchGroup, val together: Boolean, val opens: Str
 /**
  * The watch-partners plugin. Before a part of a shared title plays it asks first when it isn't
  * out yet by a group's schedule, or when a group with Together on hasn't watched it yet and it's
- * played from anywhere but that group's card ("Start a Group Watch Session", "Watch for myself", "Not
+ * played from anywhere but that group's card ("Start a Group Watch Session", "Watch on my own", "Not
  * now"); a group whose schedule doesn't allow playing ahead ([GroupSchedule.locked]) refuses what
  * isn't out yet and, with Together on, plays what it hasn't watched only together. Home's "Watching together" row ([TogetherRow]) and the cards'
  * lines keep everyone in step. Its switch turns the whole feature on or off.
@@ -896,7 +897,7 @@ class WatchPartnersPlugin : PlaybackGuard {
     /** "We're in the same room", per account and title, for this run of the app. */
     private val rooms = kotlinx.coroutines.flow.MutableStateFlow<Map<String, SameRoom>>(emptyMap())
 
-    /** Where the guard's answer says an item now plays from ("Watch for myself", "Start a Group Watch Session"), per account and item, until it's asked for. */
+    /** Where the guard's answer says an item now plays from ("Watch on my own", "Start a Group Watch Session"), per account and item, until it's asked for. */
     private val answered = kotlinx.coroutines.flow.MutableStateFlow<Map<String, PlayOrigin>>(emptyMap())
 
     /** Who the user chose to watch [titleId] with (the player's chip), if they did. */
@@ -921,7 +922,7 @@ class WatchPartnersPlugin : PlaybackGuard {
 
     /**
      * Where playing [item] really starts from: what the user answered the guard's question with
-     * ("Watch for myself": [PlayOrigin.ForMyself]; "Start a Group Watch Session", "We're in the same room":
+     * ("Watch on my own": [PlayOrigin.ForMyself]; "Start a Group Watch Session", "We're in the same room":
      * that group's card), else [given] (the card it was played from), else elsewhere. The answer is used once.
      */
     fun originOf(host: PluginHost, item: MediaItem, given: PlayOrigin? = null): PlayOrigin =
@@ -1008,8 +1009,8 @@ class WatchPartnersPlugin : PlaybackGuard {
      * only that group's schedule asks, when the part isn't out yet ("Opens Thursday 7pm": Watch for
      * myself / Not now). From anywhere else: each group on the title asks when the part isn't out
      * yet, and a group with Together on when it hasn't watched it ("Start a Group Watch Session", "We're in
-     * the same room", "Watch for myself", "Not now"); not while the user is in a live session or
-     * the same room with someone from that group. "Watch for myself" asks nothing more.
+     * the same room", "Watch on my own", "Not now"); not while the user is in a live session or
+     * the same room with someone from that group. "Watch on my own" asks nothing more.
      *
      * Don't allow ([WatchGroup.locked]), from anywhere: a part the group's schedule hasn't let out
      * is refused ("Opens Thursday 7pm", OK only), and with Together on a part the group hasn't
@@ -1084,7 +1085,7 @@ class WatchPartnersPlugin : PlaybackGuard {
     }
 
     private fun forMyself(item: MediaItem, host: PluginHost) =
-        GuardChoice("Watch for myself", GuardAction.RunThenPlay { answer(host, item, PlayOrigin.ForMyself) })
+        GuardChoice("Watch on my own", GuardAction.RunThenPlay { answer(host, item, PlayOrigin.ForMyself) })
 
     private fun notOutYet(item: MediaItem, lock: PartLock, host: PluginHost): GuardDecision.Ask {
         val g = lock.group
@@ -1094,7 +1095,7 @@ class WatchPartnersPlugin : PlaybackGuard {
         return GuardDecision.Ask(
             title = lock.word,
             message = "$what isn't out yet for your group with ${g.label}: it follows the group's schedule (${s.label}) and opens $opens. " +
-                "Watching it for yourself now counts for no group.",
+                "Watching it now counts on your own track only.",
             choices = listOf(forMyself(item, host), GuardChoice("Not now", GuardAction.Cancel)),
         )
     }
@@ -1115,7 +1116,7 @@ class WatchPartnersPlugin : PlaybackGuard {
     /**
      * "Tommy & Suzy haven't watched this yet": Start a Group Watch Session (for the group),
      * We're in the same room (everyone in the group here; it counts for them too, changeable in
-     * the player), Watch for myself (no group; not when the group's schedule doesn't allow it,
+     * the player), Watch on my own (no group; not when the group's schedule doesn't allow it,
      * [alone] false), Not now.
      */
     private fun unwatched(item: MediaItem, g: WatchGroup, titleId: String, host: PluginHost, alone: Boolean): GuardDecision.Ask {
@@ -1133,7 +1134,7 @@ class WatchPartnersPlugin : PlaybackGuard {
         return GuardDecision.Ask(
             title = unwatchedTitle(g),
             message = if (alone) "You watch $what together with ${g.label}. Start a Group Watch Session, watch here in the same room, " +
-                "or for yourself (it counts for no group)."
+                "or on your own (it counts on your own track only)."
             else "You watch $what together with ${g.label}, and the group's schedule (${g.schedule!!.label}) keeps what it hasn't watched yet " +
                 "for watching together. Start a Group Watch Session, or watch here in the same room.",
             choices = listOfNotNull(together, room, if (alone) forMyself(item, host) else null, GuardChoice("Not now", GuardAction.Cancel)),

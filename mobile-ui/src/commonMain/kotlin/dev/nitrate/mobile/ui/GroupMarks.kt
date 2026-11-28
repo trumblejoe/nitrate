@@ -56,7 +56,7 @@ fun rememberGroupMarker(actions: AppActions): GroupMarker {
     return remember(actions) { GroupMarker(actions, scope) }
 }
 
-/** "Also mark it watched for Kim, where it's next too?": Just this group / All groups where it's next. */
+/** "Also mark it watched on your track with Kim, where it's next too?": Just this group / All groups where it's next. */
 @Composable
 fun GroupMarkQuestion(marker: GroupMarker) {
     val (group, item, others) = marker.asking ?: return

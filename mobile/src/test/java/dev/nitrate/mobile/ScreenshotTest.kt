@@ -241,7 +241,7 @@ class ScreenshotTest {
     }
 
     /**
-     * The group panel: who it counts for ("Counting for you and Will · Change", "Watching on your
+     * The group panel: who it counts for ("Your track with Will · Change", "Watching on your
      * own") and Start a Group Watch Session; no chat (that's the Chat button's).
      */
     @Test fun groupPanel() = shoot("phone-group-panel", setup = { c ->
@@ -471,7 +471,7 @@ class ScreenshotTest {
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Thursdays 7pm, together, locked", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "the summary says locked" }
     }
 
-    /** A group whose schedule doesn't allow playing ahead: "Opens Thursday 7pm", why, and only OK (no Watch for myself). */
+    /** A group whose schedule doesn't allow playing ahead: "Opens Thursday 7pm", why, and only OK (no Watch on my own). */
     @Test fun playAheadRefused() {
         var ask: dev.nitrate.core.plugins.GuardDecision.Ask? = null
         shoot("phone-play-ahead-refused", setup = { c ->
@@ -489,7 +489,7 @@ class ScreenshotTest {
         }) { dev.nitrate.mobile.ui.GuardDialog(ask!!) {} }
         check(ask!!.title == "Opens Thursday 7pm") { ask!!.title }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("OK")).fetchSemanticsNodes().isNotEmpty()) { "OK" }
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Watch for myself")).fetchSemanticsNodes().isEmpty()) { "nothing to watch for oneself" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Watch on my own")).fetchSemanticsNodes().isEmpty()) { "nothing to watch for oneself" }
     }
 
     /** A long press on a group's card: that group's choices (mark for the group, same room, add a title, …). */
@@ -588,7 +588,7 @@ class ScreenshotTest {
     /** An episode's page: where it belongs (show › season), its own name, and the rest of its season. */
     /**
      * An episode entered from Will's group: its own Watched and, beside it, the group's mark
-     * ("Not watched with Will"), which marks it in the group's record only; the episode list
+     * ("Not watched on your track with Will"), which marks it in the group's record only; the episode list
      * shows the group's marks too.
      */
     @Test fun episodeFromAGroup() {
@@ -598,13 +598,13 @@ class ScreenshotTest {
             server.partnerInfo = server.partnerInfo.copy(groups = server.partnerInfo.groups.map { if (it.id == "g1") it.copy(ownRecord = setOf("s1e1")) else it })
             c.refreshCompanionForTests()
         }) { DetailsScreen(it.fromGroup("g1"), "s1e2", null) }
-        compose.onAllNodesWithText("Plays here count for the group", substring = true).onFirst().assertExists()
+        compose.onAllNodesWithText("Plays here count on your track with them", substring = true).onFirst().assertExists()
         org.junit.Assert.assertTrue("only the group it was entered from", compose.onAllNodesWithText("Frank", substring = true).fetchSemanticsNodes().isEmpty())
-        compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Not watched with Will")).onFirst().performClick()
+        compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Not watched on your track with Will")).onFirst().performClick()
         compose.waitForIdle()
         org.junit.Assert.assertTrue(server.groupMarks.toString(), "[g1] [s1e2]" in server.groupMarks)
         // Down the page, the episodes the group has carry its mark.
-        compose.onAllNodes(androidx.compose.ui.test.hasScrollToNodeAction()).onFirst().performScrollToNode(androidx.compose.ui.test.hasContentDescription("Watched with Will"))
+        compose.onAllNodes(androidx.compose.ui.test.hasScrollToNodeAction()).onFirst().performScrollToNode(androidx.compose.ui.test.hasContentDescription("Watched on your track with Will"))
     }
 
     /** The server refuses Watched: the page says why, and the tick stays as the server has it (never a mark that didn't happen). */

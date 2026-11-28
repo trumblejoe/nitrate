@@ -1925,7 +1925,7 @@ class TvScreenshotTest {
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(focusedHasText("Counting for you and Will · Change")) { "the panel opens on its top line; focused: ${focusedNodes()}" }
+        check(focusedHasText("Your track with Will · Change")) { "the panel opens on its top line; focused: ${focusedNodes()}" }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Watching on your own")).fetchSemanticsNodes().isNotEmpty()) { "it says you watch on your own" }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Group chat", substring = true)).fetchSemanticsNodes().isEmpty()) { "the chat isn't in the group panel" }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Start a Group Watch Session")).fetchSemanticsNodes().isNotEmpty()) { "Start a Group Watch Session is offered" }
@@ -2001,16 +2001,16 @@ class TvScreenshotTest {
         reachGroupButton()
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        choose("Counting for you and Will · Change")
-        choose("With Frank, Tommy & Jane")
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counting for you, Frank, Tommy & Jane · Change")).fetchSemanticsNodes().isNotEmpty()) { "the top line says the new choice" }
-        choose("Counting for you, Frank, Tommy & Jane · Change")
+        choose("Your track with Will · Change")
+        choose("Your track with Frank, Tommy & Jane")
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Your track with Frank, Tommy & Jane · Change")).fetchSemanticsNodes().isNotEmpty()) { "the top line says the new choice" }
+        choose("Your track with Frank, Tommy & Jane · Change")
         choose("We're in the same room")
         check(focusedHasText("Frank")) { "the room page opens on the first member; focused: ${focusedNodes()}" }
         press("back")
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("No group")).fetchSemanticsNodes().isNotEmpty()) { "Back on the room page goes back to Change" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Your own track")).fetchSemanticsNodes().isNotEmpty()) { "Back on the room page goes back to Change" }
         press("back")
-        check(focusedHasText("Counting for you, Frank, Tommy & Jane · Change")) { "then to the panel, on the line that opened Change; focused: ${focusedNodes()}" }
+        check(focusedHasText("Your track with Frank, Tommy & Jane · Change")) { "then to the panel, on the line that opened Change; focused: ${focusedNodes()}" }
         press("back")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
         check(focusedIs("Frank, Tommy & Jane")) { "the next Back closes it, focus back on the button with its new name; focused: ${focusedNodes()}" }
@@ -2018,9 +2018,9 @@ class TvScreenshotTest {
 
     /** Easy mode: who it's watched with is said beside the buttons, never a button. */
     @Test fun playerWithEasy() = withPlayer("tv-player-with-easy", easy = true) {
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counting for you and Will")).fetchSemanticsNodes().isNotEmpty()) { "the chip's words show in easy mode, without Change" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counting on your track with Will")).fetchSemanticsNodes().isNotEmpty()) { "the chip's words show in easy mode, without Change" }
         repeat(6) { press("right") }
-        check(!focusedHasText("Counting for you and Will") && !focusedIs("Will")) { "but it never takes focus" }
+        check(!focusedHasText("Counting on your track with Will") && !focusedIs("Will")) { "but it never takes focus" }
     }
 
     /** The group's notes pop up over the video as playback reaches them: the first two, a few seconds in, not the later one. */
@@ -3177,7 +3177,7 @@ class TvScreenshotTest {
         }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Opens Thursday 7pm")).fetchSemanticsNodes().isNotEmpty()) { "says when it opens" }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("doesn't allow playing ahead", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "says why" }
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Watch for myself")).fetchSemanticsNodes().isEmpty()) { "nothing to watch for oneself" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Watch on my own")).fetchSemanticsNodes().isEmpty()) { "nothing to watch for oneself" }
         check(focusedHasText("OK")) { "focus on OK; focused: ${focusedNodes()}" }
     }) { c ->
         val gate = dev.nitrate.tv.plugins.core.rememberPlaybackGate(c.plugins) { _, _, _ -> }
@@ -3214,7 +3214,7 @@ class TvScreenshotTest {
         server.partnerInfo = server.partnerInfo.copy(groups = server.partnerInfo.groups.map { if (it.id == "g1") it.copy(ownRecord = setOf("s1e1")) else it })
         c.refreshCompanionForTests()
     }, act = {
-        check(compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Not watched with Will")).fetchSemanticsNodes().isNotEmpty()) { "the group's mark is beside Watched" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Not watched on your track with Will")).fetchSemanticsNodes().isNotEmpty()) { "the group's mark is beside Watched" }
         check(shows("✓ with Will")) { "the episodes the group has say so" }
     }) { c ->
         dev.nitrate.tv.ui.partners.ProvideGroupMarks(c, "g1") {
