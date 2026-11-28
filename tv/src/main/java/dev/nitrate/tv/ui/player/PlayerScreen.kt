@@ -42,6 +42,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -753,7 +754,8 @@ fun PlayerScreen(
                     PlayerAction("Audio", ready) { panel = Panel.AUDIO },
                     PlayerAction("Subtitles", ready) { panel = Panel.SUBTITLES },
                     // The group button (who it counts for, Group Watch Sessions); in easy mode only who it counts for, said beside the buttons.
-                    groupLabel?.let { PlayerAction(it, key = WITH_KEY) { toggle(Panel.GROUP) } },
+                    // The viewing pill: the people mark and the group, or the check and Individual (one look on the page and here).
+                    groupLabel?.let { PlayerAction(it, key = WITH_KEY, icon = if (withChip?.isGroup == true) dev.nitrate.tv.ui.partners.GroupIcon else androidx.compose.material.icons.Icons.Filled.Check) { toggle(Panel.GROUP) } },
                     // The chat: a strip across the bottom, the video above.
                     chatLabel?.let { PlayerAction(it, key = CHAT_KEY, mark = chatNew, markWords = "New messages") { panel = Panel.CHAT } },
                     PlayerAction("Info", ready) { panel = Panel.INFO }.takeIf { !easy },

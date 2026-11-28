@@ -459,7 +459,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                 }
                 DetailsScreen(actions, route.itemId, route.seasonId, route.artKey, group = route.group, playlist = route.playlist)
             }
-            screen<PlaylistRoute> { entry -> entry.toRoute<PlaylistRoute>().let { r -> PlaylistScreen(actions.fromGroup(r.group), r.playlistId) } }
+            screen<PlaylistRoute> { entry -> entry.toRoute<PlaylistRoute>().let { r -> PlaylistScreen(actions, r.playlistId, group = r.group) } }
             screen<ManageItemRoute> { entry -> entry.toRoute<ManageItemRoute>().let { ManageItemScreen(actions, it.itemId, it.images, if (it.run) actions.container.imageFixRun else emptyList()) } }
             screen<ServerAdminRoute> { ServerAdminScreen(actions) }
             screen<LibraryHealthRoute> { LibraryHealthScreen(actions) }

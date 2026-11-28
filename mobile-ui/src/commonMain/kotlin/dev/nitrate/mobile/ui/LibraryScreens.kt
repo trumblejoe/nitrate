@@ -266,7 +266,17 @@ private fun LibraryGrid(actions: AppActions, library: MediaItem) {
 }
 
 @Composable
-fun PlaylistScreen(actions: AppActions, playlistId: String) {
+fun PlaylistScreen(actions: AppActions, playlistId: String, group: String? = null) {
+    // Group (entered from a watch group, or picked in the page's pill) or Individual: its parts' marks and plays follow it.
+    var viewing by androidx.compose.runtime.saveable.rememberSaveable(playlistId) { mutableStateOf(group) }
+    val here = remember(actions, viewing) { actions.fromGroup(viewing) }
+    androidx.compose.runtime.CompositionLocalProvider(LocalViewing provides Viewing(viewing) { viewing = it }) {
+        PlaylistPage(here, playlistId)
+    }
+}
+
+@Composable
+private fun PlaylistPage(actions: AppActions, playlistId: String) {
     val server = actions.server
     val scope = rememberCoroutineScope()
     // Entered from a watch group (its card, or Watch groups): each part has the group's own mark too.
@@ -332,6 +342,8 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
                 Column(Modifier.padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Group or Individual: the playlist's pill (in one of the user's groups).
+                    playlist?.let { ViewingPill(actions, it) }
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     status?.takeIf { it.total > 0 }?.let { s ->
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -418,8 +430,9 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                                     "NEXT", style = MaterialTheme.typography.labelSmall, color = androidx.compose.ui.graphics.Color.Black,
                                     modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(androidx.compose.ui.graphics.Color.White).padding(horizontal = 6.dp, vertical = 2.dp),
                                 )
-                                if (item.user.played && LocalDisplayPrefs.current.watchedMarks) Icon(Icons.Default.Check, "Watched", tint = MaterialTheme.colorScheme.primary)
-                                GroupMarkToggle(actions, item, marker)
+                                // Group: the people mark; Individual: the check. Never both.
+                                if (groupMarkFor(actions, item) != null) GroupMarkToggle(actions, item, marker)
+                                else if (item.user.played && LocalDisplayPrefs.current.watchedMarks) Icon(Icons.Default.Check, "Watched", tint = MaterialTheme.colorScheme.primary)
                                 item.runtimeMs?.takeIf { LocalDisplayPrefs.current.runtime }?.let { Text(formatRuntime(it), style = MaterialTheme.typography.labelMedium) }
                                 // The visible way to what a long press offers (play from here, mark watched up to here…).
                                 if (!audio && video) IconButton(onClick = { menuFor = item }) { Icon(Icons.Default.MoreVert, "More for ${item.spokenTitle}") }

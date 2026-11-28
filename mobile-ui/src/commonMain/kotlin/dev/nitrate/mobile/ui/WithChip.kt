@@ -37,6 +37,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
@@ -119,19 +120,13 @@ fun GroupButton(chip: WithChip?, easy: Boolean, onOpen: () -> Unit, modifier: Mo
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (!easy) chip?.initials?.forEach { letter ->
-            Text(
-                letter,
-                color = Color.Black,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                modifier = Modifier.size(24.dp).background(accentColor(), androidx.compose.foundation.shape.CircleShape)
-                    .wrapContentHeight(Alignment.CenterVertically),
-            )
-        }
+        // The viewing pill, as on the title's page: the people mark for Group, the check for Individual.
+        androidx.compose.material3.Icon(
+            if (chip?.isGroup == true) NitrateIcons.Group else androidx.compose.material.icons.Icons.Default.Check, null,
+            tint = Color.White, modifier = Modifier.padding(start = 4.dp).size(18.dp),
+        )
         Text(label, color = Color.White, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = if (easy || chip?.initials.isNullOrEmpty()) 8.dp else 0.dp, top = 4.dp, bottom = 4.dp))
+            modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))
     }
 }
 

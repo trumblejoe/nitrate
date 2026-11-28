@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -159,6 +160,8 @@ fun PlaylistScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.Bottom),
             ) {
                 TitleOrLogo(shown, repository.logoUrl(shown))
+                // Group or Individual: the playlist's pill (in one of the user's groups), always there to switch.
+                dev.nitrate.tv.ui.partners.ViewingPill(pl)
                 if (shown.id == pl.id) {
                     val runtime = all.sumOf { it.runtimeMs ?: 0L }
                     Text(
@@ -405,11 +408,13 @@ private fun PlaylistEntry(
                         modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(Color.White).padding(horizontal = 8.dp, vertical = 2.dp),
                     )
                 }
-                if (item.user.played) Text("✓", color = MaterialTheme.colorScheme.primary)
-                // Entered from a watch group: the group's own mark (toggled on the part's page).
-                dev.nitrate.tv.ui.partners.groupMarkFor(item)?.takeIf { dev.nitrate.core.partners.GroupMarks.watched(it, item) }?.let {
-                    Text("✓ with " + dev.nitrate.core.partners.GroupMarks.caption(it), color = MaterialTheme.colorScheme.primary)
-                }
+                // Group: the people mark (lit when watched in the group); Individual: the check. Never both.
+                val group = dev.nitrate.tv.ui.partners.groupMarkFor(item)
+                if (group != null) androidx.tv.material3.Icon(
+                    dev.nitrate.tv.ui.partners.GroupIcon, dev.nitrate.core.partners.GroupMarks.label(group, item),
+                    tint = if (dev.nitrate.core.partners.GroupMarks.watched(group, item)) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.5f),
+                    modifier = Modifier.size(20.dp),
+                ) else if (item.user.played) Text("✓", color = MaterialTheme.colorScheme.primary)
                 item.runtimeMs?.let { Text(formatRuntime(it)) }
             }
         },

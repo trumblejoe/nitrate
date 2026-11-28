@@ -571,9 +571,10 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<PlaylistRoute> { entry ->
             val route = entry.toRoute<PlaylistRoute>()
             val id = route.playlistId
-            // Entered from a watch group: its marks on the parts, and each part opens in the group.
-            dev.nitrate.tv.ui.partners.ProvideGroupMarks(container, route.group) {
-                androidx.compose.runtime.CompositionLocalProvider(LocalOpenGroup provides route.group) {
+            // Group (entered from a watch group, or picked in the page's pill) or Individual: its parts' marks and plays follow it.
+            var viewing by androidx.compose.runtime.saveable.rememberSaveable(id) { androidx.compose.runtime.mutableStateOf(route.group) }
+            dev.nitrate.tv.ui.partners.ProvideGroupMarks(container, viewing, onSwitch = { viewing = it }) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalOpenGroup provides viewing) {
                     playlistPage(id, null) {
                         savePrefs { p -> p.copy(homePlaylists = p.homePlaylists - id, menuPlaylists = p.menuPlaylists - id) }
                         nav.popBackStack()

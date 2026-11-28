@@ -135,7 +135,7 @@ internal fun PlayerControls(
         ) {
             PlayPauseButton(playing, onPlayPause, Modifier.remembered(focus, ControlFocus.PLAY_PAUSE))
             for (b in buttons) {
-                PlayerButton(b.label, b.onClick, Modifier.remembered(focus, b.key), enabled = b.enabled, mark = b.mark, markWords = b.markWords)
+                PlayerButton(b.label, b.onClick, Modifier.remembered(focus, b.key), enabled = b.enabled, mark = b.mark, markWords = b.markWords, icon = b.icon)
             }
             note?.let {
                 Text(it, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.85f), modifier = Modifier.padding(start = 12.dp))
@@ -310,6 +310,8 @@ internal class PlayerAction(
     val key: String = label,
     val mark: Boolean = false,
     val markWords: String? = null,
+    /** A mark before the words: the viewing pill's people mark or check. */
+    val icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     val onClick: () -> Unit,
 )
 
@@ -332,7 +334,7 @@ private fun playerButtonColors() = ButtonDefaults.colors(
 
 /** A player button: quiet until focused, then white with an outline and a little larger. */
 @Composable
-internal fun PlayerButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, mark: Boolean = false, markWords: String? = null) {
+internal fun PlayerButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, mark: Boolean = false, markWords: String? = null, icon: androidx.compose.ui.graphics.vector.ImageVector? = null) {
     Button(
         onClick = onClick,
         enabled = enabled,
@@ -342,6 +344,7 @@ internal fun PlayerButton(label: String, onClick: () -> Unit, modifier: Modifier
         scale = ButtonDefaults.scale(focusedScale = 1.12f, focusedDisabledScale = 1.12f),
         border = ButtonDefaults.border(focusedBorder = focusBorder, focusedDisabledBorder = focusBorder),
     ) {
+        icon?.let { androidx.tv.material3.Icon(it, null, Modifier.padding(end = 8.dp).size(20.dp)) }
         Text(label)
         // Something new: a small dot in the accent colour after the words.
         if (mark) Box(Modifier.padding(start = 8.dp).size(9.dp).background(MaterialTheme.colorScheme.primary, CircleShape))

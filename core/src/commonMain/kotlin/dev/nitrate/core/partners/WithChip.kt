@@ -52,14 +52,18 @@ data class WithChip(
     }
 
     /**
-     * The player's group button (it opens the group panel): the group's name ("Tommy & Suzy"), "No
-     * group", "Tommy · in the room", or "Group Watch Session · Tommy, Suzy".
+     * The player's group button, the viewing pill (it opens the group panel): the group's name
+     * ("Tommy & Suzy ▾", drawn with the people mark), "Individual ▾" (with the check), "Tommy · in
+     * the room ▾", or "Group Watch Session · Tommy, Suzy ▾".
      */
     val button: String get() = when {
         inSession -> if (session.isEmpty()) "Group Watch Session" else "Group Watch Session · " + and(session)
         roomNames.isNotEmpty() -> and(roomNames) + " · in the room"
         else -> group?.let { nameOf(it) } ?: Viewing.INDIVIDUAL
-    }
+    } + "  ▾"
+
+    /** Whether the pill is Group (the people mark) rather than Individual (the check). */
+    val isGroup: Boolean get() = inSession || roomNames.isNotEmpty() || group != null
 
     /** Initials for the button's avatars: the people of the group it counts for, or in the session (at most three). */
     val initials: List<String> get() = when {

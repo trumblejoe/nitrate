@@ -1894,7 +1894,7 @@ class TvScreenshotTest {
         compose.waitForIdle()
     }
 
-    private fun reachGroupButton(name: String = "Will") {
+    private fun reachGroupButton(name: String = "Will  ▾") {
         repeat(8) { if (!focusedIs(name)) press("right") }
         check(focusedIs(name)) { "the group button says the group it counts for; focused: ${focusedNodes()}" }
     }
@@ -2013,14 +2013,14 @@ class TvScreenshotTest {
         check(focusedHasText("Group · Frank, Tommy & Jane · Change")) { "then to the panel, on the line that opened Change; focused: ${focusedNodes()}" }
         press("back")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(focusedIs("Frank, Tommy & Jane")) { "the next Back closes it, focus back on the button with its new name; focused: ${focusedNodes()}" }
+        check(focusedIs("Frank, Tommy & Jane  ▾")) { "the next Back closes it, focus back on the button with its new name; focused: ${focusedNodes()}" }
     }
 
     /** Easy mode: who it's watched with is said beside the buttons, never a button. */
     @Test fun playerWithEasy() = withPlayer("tv-player-with-easy", easy = true) {
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Group · Will")).fetchSemanticsNodes().isNotEmpty()) { "the chip's words show in easy mode, without Change" }
         repeat(6) { press("right") }
-        check(!focusedHasText("Group · Will") && !focusedIs("Will")) { "but it never takes focus" }
+        check(!focusedHasText("Group · Will") && !focusedIs("Will  ▾")) { "but it never takes focus" }
     }
 
     /** The group's notes pop up over the video as playback reaches them: the first two, a few seconds in, not the later one. */
